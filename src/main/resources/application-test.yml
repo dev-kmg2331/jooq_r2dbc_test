@@ -1,0 +1,14 @@
+spring:
+  config:
+    import: file:${user.home}\jooq_r2dbc_test\.env[.properties]
+  r2dbc:
+    url: r2dbc:postgresql://${DB_POSTGRES_IP}:${DB_POSTGRES_PORT}/kmg?currentSchema=jooq_r2dbc&useUnicode=true&characterEncoding=utf8
+    username: ${DB_POSTGRES_USERNAME}
+    password: ${DB_POSTGRES_PASSWORD}
+    pool:
+      enabled: true
+      max-size: 30
+      initial-size: 5
+      validation-query: SELECT 1
+      max-idle-time: 10s
+      max-acquire-time: 5s

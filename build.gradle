@@ -1,8 +1,16 @@
+buildscript {
+    ext {
+        // jooq version
+        jooqVersion = '3.19.5'
+    }
+}
+
 plugins {
     id 'org.jetbrains.kotlin.jvm' version '1.9.25'
     id 'org.jetbrains.kotlin.plugin.spring' version '1.9.25'
-    id 'org.springframework.boot' version '3.4.1'
-    id 'io.spring.dependency-management' version '1.1.7'
+    id 'org.springframework.boot' version '3.4.0'
+    id 'io.spring.dependency-management' version '1.1.6'
+    id 'nu.studer.jooq' version '9.0' // jooq plugin
 }
 
 group = 'app.test'
@@ -14,16 +22,115 @@ java {
     }
 }
 
+// add jooq sources to project
+sourceSets {
+    main {
+        java {
+            srcDir("build/generated-src/jooq/main")
+        }
+    }
+}
+
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.jetbrains.kotlin:kotlin-reflect'
+
+    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+    implementation 'io.projectreactor.kotlin:reactor-kotlin-extensions'
+    implementation 'org.jetbrains.kotlin:kotlin-reflect'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-reactor'
+    implementation 'org.springframework.data:spring-data-relational:3.4.0'
+
+    // jooq
+    implementation ('org.springframework.boot:spring-boot-starter-jooq') {
+        exclude group: 'org.jooq:jooq'
+    }
+    implementation "org.jooq:jooq:${jooqVersion}"
+    // jooq generator
+    jooqGenerator "org.jooq:jooq:${jooqVersion}"
+    jooqGenerator "org.jooq:jooq-meta:${jooqVersion}"
+    jooqGenerator "org.postgresql:postgresql:42.7.2"
+
+    implementation 'org.postgresql:r2dbc-postgresql'
+
+    testImplementation "org.springframework.boot:spring-boot-test-autoconfigure:3.4.0"
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation 'io.projectreactor:reactor-test'
     testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+Properties loadEnvProperty() {
+    def envProperties = new Properties()
+    def envPropertiesFile = file("${rootDir}/.env")
+
+    envPropertiesFile.withReader('UTF-8') { reader ->
+        envProperties.load(reader)
+    }
+
+    return envProperties
+}
+
+// jooq compile settings
+jooq {
+    // jooq version
+    version = "${jooqVersion}"
+
+    // load .env file
+    def env = loadEnvProperty()
+
+    configurations {
+        // use postgres
+        postgresDB {
+            // connect to database using jdbc postgres driver (important!)
+            generationTool {
+                jdbc {
+                    driver = 'org.postgresql.Driver'
+                    url = "jdbc:postgresql://${env.getProperty("DB_POSTGRES_IP")}:${env.getProperty("DB_POSTGRES_PORT")}/kmg?currentSchema=jooq_r2dbc&useUnicode=true&characterEncoding=utf8"
+                    user = "${env.getProperty("DB_POSTGRES_USERNAME")}"
+                    password = "${env.getProperty("DB_POSTGRES_PASSWORD")}"
+                }
+
+                // default (X). recommend kotlin generator for kotlin.
+                generator {
+                    name = 'org.jooq.codegen.KotlinGenerator'
+
+                    database {
+                        name = 'org.jooq.meta.postgres.PostgresDatabase'
+
+                        schemata {
+                            schema {
+                                inputSchema = 'jooq_r2dbc'
+                            }
+                        }
+                    }
+
+                    // generate file options
+                    generate {
+                        daos = true
+                        records = false
+                        fluentSetters = true
+                        javaTimeTypes = true
+                        deprecated = false
+                    }
+
+                    target {
+                        // package name
+//                        packageName = 'app.test.jooq_r2dbc_test'
+                        // generated file target directory.
+                        // ** highly recommend 'build/..' directory.
+                        directory = 'build/generated-src/jooq/main'
+                    }
+
+                    strategy.name = "org.jooq.codegen.DefaultGeneratorStrategy"
+                }
+            }
+        }
+    }
 }
 
 kotlin {
